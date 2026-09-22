@@ -42,9 +42,9 @@ Measured 2026-09-22.
 
 | | Mac, Apple M4 (MLX, 8-bit) | CPU engine on the M4 (llama.cpp) | Windows CI, 4-core, no GPU (llama.cpp) |
 |---|---|---|---|
-| Per decision, median | **0.54-0.93 s** | 2.3-2.8 s | 7-11 s |
+| Per decision, median | **0.54-0.93 s** | 2.3-2.8 s | 7-17 s |
 | Claude plan | 4.7-8.2 s | same | not used (fixed plans) |
-| Whole task (2-11 steps) | 7.5-20 s | 9.6-53 s | 18-84 s |
+| Whole task (2-11 steps) | 7.5-20 s | 9.6-53 s | 16-110 s |
 
 The model's cost is almost all prompt reading: about 2.5 ms per token on the M4 GPU for a
 4B model (compute bound; a same-size standard-attention Qwen3-4B measured the same). That is
