@@ -8,7 +8,7 @@ const { plan, replan, describe } = require('./planner');
 const MAX_CANDIDATES = 8;
 const MIN_CONFIDENCE = 0.35;
 const MAX_REPLANS = 2;
-const STOP = new Set('a an the to of for in on at with and or into from this that its it field button link box'.split(' '));
+const STOP = new Set('a an the to of for in on at with and or into from this that its it field button link box input dropdown menu checkbox'.split(' '));
 
 const words = (s) => (s || '').toLowerCase().match(/[a-z0-9$]+/g)?.filter((w) => !STOP.has(w)) || [];
 
@@ -90,9 +90,11 @@ class Agent {
     }
     const candidates = rank(step, pool);
     this.emit('trace', { text: `${pool.length} fields/elements fit, ${candidates.length} kept` });
-    // Skip the model only when the sole candidate's own label matches the step.
-    // Being the only field on the page does not make it the field the step means.
-    if (candidates.length === 1 && words(`${candidates[0].name} ${candidates[0].role}`).some((w) => wanted(step).has(w))) {
+    // Skip the model only when every word of the target is in the sole candidate's own
+    // label. Being the only field on the page does not make it the field the step means
+    // ("first name" must not match "Passenger full name").
+    const own = new Set(words(`${candidates[0].name} ${candidates[0].role}`));
+    if (candidates.length === 1 && [...wanted(step)].every((w) => own.has(w))) {
       return { el: candidates[0], confidence: 1, ms: 0, candidates: 1, skipped: true };
     }
     const state = `Page: ${snapshot.title}\nStep: ${stepLine(step)}`;

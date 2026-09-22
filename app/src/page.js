@@ -98,7 +98,14 @@ class Page {
   }
 
   async goto(url) {
-    await this.wc.loadURL(url);
+    try {
+      await this.wc.loadURL(url);
+    } catch (error) {
+      // A network blip (Wi-Fi roaming, VPN reconnect) gets one retry.
+      if (!/ERR_(NETWORK_CHANGED|CONNECTION_RESET|TIMED_OUT|INTERNET_DISCONNECTED)/.test(error.message)) throw error;
+      await sleep(1500);
+      await this.wc.loadURL(url);
+    }
     await this.settle();
   }
 

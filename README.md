@@ -36,17 +36,20 @@ The model runs where it's fastest on each machine: **MLX** on Apple Silicon (8-b
    from the live page (at most twice). The final page is checked with the success question;
    a failed check gets one replan too.
 
-## Speed (measured 2026-09-22, M4 16 GB)
+## Speed
 
-| | Mac (MLX, 8-bit) | CPU (llama.cpp, Q8_0), the Windows-without-NVIDIA path |
-|---|---|---|
-| Per decision, median | **0.54–0.85 s** | 2.3–2.8 s (on the M4's CPU) |
-| Claude plan | 4.7–8.2 s | same |
-| Whole task (2–11 steps) | 7.5–20 s | 9.6–53 s |
+Measured 2026-09-22.
 
-The model's cost is almost all prompt reading, about 2.5 ms per token on the M4 GPU for a
-4B model (compute bound: a same-size standard-attention Qwen3-4B measured the same). That is
-why every decision is kept to ~250 tokens.
+| | Mac, Apple M4 (MLX, 8-bit) | CPU engine on the M4 (llama.cpp) | Windows CI, 4-core, no GPU (llama.cpp) |
+|---|---|---|---|
+| Per decision, median | **0.54-0.93 s** | 2.3-2.8 s | 7-11 s |
+| Claude plan | 4.7-8.2 s | same | not used (fixed plans) |
+| Whole task (2-11 steps) | 7.5-20 s | 9.6-53 s | 18-84 s |
+
+The model's cost is almost all prompt reading: about 2.5 ms per token on the M4 GPU for a
+4B model (compute bound; a same-size standard-attention Qwen3-4B measured the same). That is
+why every decision is kept to ~250 tokens. On a Windows PC, an NVIDIA GPU is what makes it
+fast; the CPU engine works but is an order of magnitude slower.
 
 ## Tests
 

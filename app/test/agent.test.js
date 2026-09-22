@@ -41,3 +41,19 @@ test('parsePlan accepts fenced JSON and rejects unknown actions', () => {
   assert.throws(() => parsePlan('{"start_url":"u","steps":[{"action":"drag","target":"x"}],"success_check":"q"}'));
   assert.throws(() => parsePlan('{"steps":[]}'));
 });
+
+test('the single-candidate shortcut needs every target word in the label', async () => {
+  const { Agent } = require('../src/agent');
+  const calls = [];
+  const agent = new Agent({ page: {}, engineUrl: 'http://x' });
+  agent.decide = async (state, questions) => {
+    calls.push(questions[0].options.map((o) => o.id));
+    return { answers: { target: { choice: 'none', confidence: 0.9 } }, ms: 1 };
+  };
+  const snap = { title: 't', elements: [el('7', 'textbox', 'Passenger full name')] };
+  const skipped = await agent.ground({ action: 'type', target: 'the passenger full name field', text: 'x' }, snap);
+  assert.equal(skipped.skipped, true);
+  const asked = await agent.ground({ action: 'type', target: 'the passenger first name field', text: 'x' }, snap);
+  assert.equal(asked, null, 'model answered none');
+  assert.deepEqual(calls, [['7', 'none']]);
+});
