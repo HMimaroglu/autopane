@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Autopane</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside id="panel">
+  <header>
+    <h1>Autopane</h1>
+    <span id="engine" class="pill">Loading model…</span>
+  </header>
+
+  <form id="form">
+    <label for="task">Task</label>
+    <textarea id="task" rows="3" placeholder="Search Wikipedia for Alan Turing and open his article"></textarea>
+    <label for="start">Start page <span class="hint">optional</span></label>
+    <input id="start" type="url" placeholder="https://…">
+    <div class="buttons">
+      <button id="run" type="submit" disabled>Run</button>
+      <button id="stop" type="button" disabled>Stop</button>
+    </div>
+  </form>
+
+  <p id="status" class="status"></p>
+  <ol id="steps"></ol>
+
+  <footer id="stats" hidden>
+    <div><span id="stat-plan">–</span><small>plan (Claude)</small></div>
+    <div><span id="stat-decide">–</span><small>per decision (local)</small></div>
+    <div><span id="stat-total">–</span><small>total</small></div>
+  </footer>
+</aside>
+<main>
+  <div id="bar"><span class="dot"></span><span id="url">Agent browser, idle</span></div>
+</main>
+<script src="renderer.js"></script>
+</body>
+</html>

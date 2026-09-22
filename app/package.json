@@ -1,0 +1,14 @@
+{
+  "name": "autopane",
+  "version": "0.1.0",
+  "description": "A browser agent with its own screen: Claude plans, a local SemIf model makes each decision.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js && node ../test/e2e.mjs"
+  },
+  "devDependencies": {
+    "electron": "^44.4.4"
+  }
+}
