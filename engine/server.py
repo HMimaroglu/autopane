@@ -135,9 +135,6 @@ def main():
     if os.environ.get("AUTOPANE_TRACE_HANG"):
         # Diagnostics: print every thread's stack periodically if startup stalls.
         faulthandler.dump_traceback_later(int(os.environ["AUTOPANE_TRACE_HANG"]), repeat=True)
-    if args.exit_with_stdin:
-        # The parent holds our stdin open; EOF means it quit or crashed.
-        threading.Thread(target=lambda: (sys.stdin.read(), os._exit(0)), daemon=True).start()
     engine = Engine(json.loads(args.config))
     log("model loaded, warming up")
     # First forward compiles kernels; do it before announcing readiness.
@@ -145,6 +142,12 @@ def main():
                              "options": [{"id": "yes", "description": "Yes."},
                                          {"id": "no", "description": "No."}]}])
     faulthandler.cancel_dump_traceback_later()
+    if args.exit_with_stdin:
+        # The parent holds our stdin open; EOF means it quit or crashed. Started only
+        # after every import: on Windows a thread blocked reading stdin deadlocks a
+        # DLL load in another thread (numpy's, here), because loading checks the
+        # standard handles. If the parent is already gone, read() returns at once.
+        threading.Thread(target=lambda: (sys.stdin.read(), os._exit(0)), daemon=True).start()
     server = serve(engine, args.port)
     print(f"READY {server.server_address[1]}", flush=True)
     try:
