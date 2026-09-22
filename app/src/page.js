@@ -113,7 +113,8 @@ class Page {
     }
   }
 
-  snapshot() {
+  async snapshot() {
+    await this.wake();
     return this.eval(SNAPSHOT_JS);
   }
 

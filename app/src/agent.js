@@ -86,6 +86,7 @@ class Agent {
     const pool = snapshot.elements.filter(kindFilter(step.action));
     if (pool.length === 0) return null;
     const candidates = rank(step, pool);
+    this.emit('trace', { text: `${pool.length} fields/elements fit, ${candidates.length} kept` });
     // Skip the model only when the sole candidate's own label matches the step.
     // Being the only field on the page does not make it the field the step means.
     if (candidates.length === 1 && words(`${candidates[0].name} ${candidates[0].role}`).some((w) => wanted(step).has(w))) {
@@ -153,6 +154,7 @@ class Agent {
       }
       this.emit('step', { line: stepLine(step) });
       let snapshot = await this.page.snapshot();
+      this.emit('trace', { text: `read page: ${snapshot.elements.length} elements` });
       let grounded = await this.ground(step, snapshot);
       if (!grounded || grounded.confidence < MIN_CONFIDENCE) {
         // The target may be below the fold; look once more before asking Claude.
@@ -178,6 +180,7 @@ class Agent {
       report.decisions.push(decision);
       this.emit('decision', decision);
       t = Date.now();
+      this.emit('trace', { text: `acting on [${grounded.el.id}]` });
       await this.act(step, grounded.el);
       report.steps.push({ ...decision, actMs: Date.now() - t });
       done.push(queue.shift());
