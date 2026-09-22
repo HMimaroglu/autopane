@@ -24,6 +24,8 @@ const PYTHON = process.platform === 'win32'
 const fixed = process.argv.includes('--fixed-plans');
 const only = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const PLANS = path.join(ROOT, 'test', 'fixed-plans.json');
+const CASE_TIMEOUT_MS = Number(process.env.AUTOPANE_CASE_TIMEOUT_MS || 600000);
+const ENGINE_TIMEOUT_MS = 600000;
 
 function startEngine() {
   const config = fs.readFileSync(path.join(os.homedir(), '.autopane', 'config.json'), 'utf8');
@@ -34,6 +36,7 @@ function startEngine() {
       if (m) resolve({ child, url: `http://127.0.0.1:${m[1]}` });
     });
     child.on('exit', (code) => reject(new Error(`engine exited ${code}`)));
+    setTimeout(() => { child.kill(); reject(new Error('engine did not load in time')); }, ENGINE_TIMEOUT_MS);
   });
 }
 
@@ -42,9 +45,16 @@ function runApp(task, startUrl, engineUrl) {
   const args = ['.', '--hidden', '--task', task, '--report', report];
   if (startUrl) args.push('--start-url', startUrl);
   return new Promise((resolve) => {
+    // A task that has not finished in CASE_TIMEOUT_MS is a failure, not a hang.
+    let timedOut = false;
     const env = { ...process.env, AUTOPANE_ENGINE_URL: engineUrl, ...(fixed ? { AUTOPANE_FIXED_PLANS: PLANS } : {}) };
     const child = spawn(ELECTRON, args, { cwd: APP, env, stdio: 'inherit' });
-    child.on('exit', () => resolve(fs.existsSync(report) ? JSON.parse(fs.readFileSync(report, 'utf8')) : { ok: false, reason: 'no report' }));
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, CASE_TIMEOUT_MS);
+    child.on('exit', () => {
+      clearTimeout(timer);
+      if (timedOut) return resolve({ ok: false, reason: `timed out after ${CASE_TIMEOUT_MS / 1000} s` });
+      resolve(fs.existsSync(report) ? JSON.parse(fs.readFileSync(report, 'utf8')) : { ok: false, reason: 'no report' });
+    });
   });
 }
 
@@ -83,7 +93,9 @@ const cases = [
 const engine = process.env.AUTOPANE_ENGINE_URL ? { url: process.env.AUTOPANE_ENGINE_URL } : await startEngine();
 const rows = [];
 let failures = 0;
+console.log(`engine ready at ${engine.url}`);
 for (const c of cases) {
+  console.log(`--- ${c.name}`);
   const r = await runApp(c.task, c.start, engine.url);
   const outcome = c.check(r);
   const isolated = r.windowVisible === false && r.windowFocused === false;

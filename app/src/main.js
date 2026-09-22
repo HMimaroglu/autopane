@@ -73,6 +73,13 @@ let onDone = () => {};
 function send(channel, payload) {
   if (!win.isDestroyed()) win.webContents.send(channel, payload);
   if (channel === 'event' && payload.type === 'done') onDone(payload.data);
+  // Hidden runs print progress so a CI log shows where a task stalls.
+  if (headless && channel === 'event') {
+    const d = payload.data;
+    const detail = payload.type === 'decision' ? `${d.chose || d.value} ${d.ms ?? 0} ms`
+      : payload.type === 'step' ? d.line : payload.type === 'done' ? `${d.ok} ${d.reason}` : d?.text || '';
+    console.log(`[autopane] ${payload.type} ${detail}`);
+  }
 }
 
 // UI test: type the task into the real form, press the real Run button, wait for the
