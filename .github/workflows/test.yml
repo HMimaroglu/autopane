@@ -1,0 +1,35 @@
+name: test
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    # Full path on a GPU-less Windows machine: run.cmd setup (llama.cpp CPU engine),
+    # unit tests, then the hidden-window e2e suite with fixed plans (no Claude login here).
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup through run.cmd
+        shell: cmd
+        run: run.cmd --setup-only
+      - name: Unit tests
+        working-directory: app
+        run: node --test test/agent.test.js
+      - name: End to end (real model and app, fixed plans)
+        run: node test/e2e.mjs --fixed-plans
+
+  macos:
+    # The model needs more RAM than GitHub's macOS runners have to convert, and the full
+    # macOS path is verified on Apple Silicon locally; here, scripts and unit tests.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bash -n run.sh
+      - working-directory: app
+        run: npm ci && node --test test/agent.test.js

@@ -1,0 +1,42 @@
+{
+  "Sign up for the newsletter with the email jane@example.com": {
+    "start_url": "http://127.0.0.1:4317/newsletter",
+    "steps": [
+      {"action": "type", "target": "the email field", "text": "jane@example.com"},
+      {"action": "click", "target": "the 'Subscribe' button"}
+    ],
+    "success_check": "Does the page confirm the subscription?"
+  },
+  "Search flights from BOS to KEF on 2026-12-30, then book the cheapest nonstop flight for passenger Jane Doe": {
+    "start_url": "http://127.0.0.1:4317/flights",
+    "steps": [
+      {"action": "select", "target": "the 'From' dropdown", "text": "BOS"},
+      {"action": "select", "target": "the 'To' dropdown", "text": "KEF"},
+      {"action": "type", "target": "the date field", "text": "2026-12-30"},
+      {"action": "click", "target": "the 'Search flights' button"},
+      {"action": "click", "target": "the Select button of the cheapest nonstop flight"},
+      {"action": "type", "target": "the passenger full name field", "text": "Jane Doe"},
+      {"action": "click", "target": "the 'Confirm booking' button"}
+    ],
+    "success_check": "Does the page confirm the booking?"
+  },
+  "Sign in with username demo and password opensesame, go to Settings, turn on email notifications, and save": {
+    "start_url": "http://127.0.0.1:4317/login",
+    "steps": [
+      {"action": "type", "target": "the username field", "text": "demo"},
+      {"action": "type", "target": "the password field", "text": "opensesame"},
+      {"action": "click", "target": "the 'Sign in' button"},
+      {"action": "click", "target": "the 'Settings' link"},
+      {"action": "click", "target": "the 'Email notifications' checkbox"},
+      {"action": "click", "target": "the 'Save settings' button"}
+    ],
+    "success_check": "Does the page say the settings were saved?"
+  },
+  "Search English Wikipedia for Alan Turing and open his article": {
+    "start_url": "https://en.wikipedia.org/wiki/Main_Page",
+    "steps": [
+      {"action": "type", "target": "the search field", "text": "Alan Turing", "submit": true}
+    ],
+    "success_check": "Is this the encyclopedia article about Alan Turing?"
+  }
+}

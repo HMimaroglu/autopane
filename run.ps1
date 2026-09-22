@@ -1,45 +1,78 @@
-# Set up everything on first run, then open Autopane. Safe to re-run.
-# Windows: the model runs on an NVIDIA GPU through PyTorch/CUDA if one is present,
-# otherwise on CPU through llama.cpp.
+# Windows: set everything up on first run, then open Autopane. Safe to re-run.
+# Double-click run.cmd, or from a terminal:
+#   .\run.cmd                 set up if needed, then open the app
+#   .\run.cmd --setup-only    set up and stop
+# The model runs on an NVIDIA GPU through PyTorch/CUDA when one is present,
+# otherwise on the CPU through llama.cpp.
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
-function Need($cmd, $hint) {
-  if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { throw "Autopane needs $cmd on PATH: $hint" }
+$setupOnly = $args.Count -gt 0 -and $args[0] -eq '--setup-only'
+$appArgs = if ($setupOnly) { @($args | Select-Object -Skip 1) } else { @($args) }
+
+function Refresh-Path {
+  $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+              [Environment]::GetEnvironmentVariable('Path', 'User') + ';' +
+              (Join-Path $HOME '.local\bin')
 }
-Need node 'install Node 20+ from https://nodejs.org'
-Need git 'install git'
-Need python 'install Python 3.10-3.12 from https://python.org'
-if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
-  Write-Warning 'the claude CLI is not on PATH; planning will fail until it is (https://claude.com/claude-code)'
+function Have($cmd) { [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
+function Check($what) { if ($LASTEXITCODE -ne 0) { throw "$what failed (exit $LASTEXITCODE)" } }
+
+# uv installs and manages its own Python, so no system Python is needed.
+if (-not (Have uv)) {
+  Write-Host 'Installing uv (Python manager)...'
+  powershell -NoProfile -ExecutionPolicy Bypass -Command 'irm https://astral.sh/uv/install.ps1 | iex'
+  Refresh-Path
+}
+foreach ($tool in @(@('node', 'OpenJS.NodeJS.LTS'), @('git', 'Git.Git'))) {
+  if (-not (Have $tool[0])) {
+    if (-not (Have winget)) { throw "Autopane needs $($tool[0]); install it and run this again." }
+    Write-Host "Installing $($tool[0])..."
+    winget install --id $tool[1] -e --silent --accept-package-agreements --accept-source-agreements
+    Refresh-Path
+  }
+}
+if (-not (Have claude)) {
+  Write-Warning 'The claude CLI is not on PATH; install and sign in (https://claude.com/claude-code) before running a task.'
 }
 
 $py = 'engine\.venv\Scripts\python.exe'
-if (-not (Test-Path $py)) {
-  Write-Host 'Creating the model environment...'
-  python -m venv engine\.venv
-  & $py -m pip install -q -r engine\requirements.txt
-  if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
-    # CUDA build of PyTorch instead of the CPU wheel pip picks by default.
-    & $py -m pip install -q --force-reinstall torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
+if (-not (Test-Path 'engine\.venv\.ready')) {
+  Write-Host 'Setting up the model runtime...'
+  if (Test-Path 'engine\.venv') { Remove-Item -Recurse -Force 'engine\.venv' }
+  uv venv -q --python 3.12 engine\.venv; Check 'uv venv'
+  uv pip install -q --python $py -r engine\requirements.txt; Check 'installing the model runtime'
+  if (Have nvidia-smi) {
+    # CUDA build of PyTorch in place of the CPU wheel installed by default.
+    uv pip install -q --python $py torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128 --reinstall-package torch
+    Check 'installing PyTorch for CUDA'
   } else {
-    # Prebuilt CPU wheels, so no C++ compiler is needed.
-    & $py -m pip install -q llama-cpp-python==0.3.35 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+    # Prebuilt wheel, so no C++ compiler is needed.
+    uv pip install -q --python $py 'https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.35/llama_cpp_python-0.3.35-py3-none-win_amd64.whl'
+    Check 'installing llama.cpp'
   }
+  New-Item -ItemType File 'engine\.venv\.ready' | Out-Null
 }
 
 $config = Join-Path $HOME '.autopane\config.json'
-if (-not (Test-Path $config)) {
-  Write-Host 'Downloading and preparing the decision model (one time)...'
+if (-not ((Test-Path $config) -and (Get-Item $config).Length -gt 0)) {
+  Write-Host 'Downloading the decision model (one time, a few GB)...'
   New-Item -ItemType Directory -Force (Split-Path $config) | Out-Null
-  (& $py engine\prepare_model.py | Select-Object -Last 1) | Set-Content -Encoding utf8 $config
+  $line = & $py engine\prepare_model.py | Select-Object -Last 1
+  Check 'downloading the model'
+  [IO.File]::WriteAllText($config, $line)
 }
 
-if (-not (Test-Path app\node_modules)) {
+if (-not (Test-Path 'app\node_modules\.ready')) {
   Write-Host 'Installing the app...'
-  Push-Location app; npm install --silent; Pop-Location
+  Push-Location app
+  npm ci --silent; Check 'npm ci'
+  New-Item -ItemType File 'node_modules\.ready' | Out-Null
+  Pop-Location
 }
 
+if ($setupOnly) { Write-Host 'Setup complete.'; exit 0 }
 Push-Location app
-npx electron . @args
+$electron = node -p "require('electron')"
+& $electron . @appArgs
 Pop-Location

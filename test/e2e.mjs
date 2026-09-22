@@ -7,16 +7,23 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { startFixtures, CHEAPEST_NONSTOP } from './fixtures/server.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = path.join(ROOT, 'app');
-const ELECTRON = path.join(APP, 'node_modules', '.bin', process.platform === 'win32' ? 'electron.cmd' : 'electron');
+// The electron package exports its binary's path; spawning it directly avoids a
+// shell, which on Windows would split the task text on spaces.
+const ELECTRON = createRequire(path.join(APP, 'package.json'))('electron');
 const PYTHON = process.platform === 'win32'
   ? path.join(ROOT, 'engine', '.venv', 'Scripts', 'python.exe')
   : path.join(ROOT, 'engine', '.venv', 'bin', 'python');
-const only = process.argv[2];
+// --fixed-plans: use test/fixed-plans.json instead of calling Claude (for CI machines
+// without a Claude login). Everything else, model and app included, is real.
+const fixed = process.argv.includes('--fixed-plans');
+const only = process.argv.slice(2).find((a) => !a.startsWith('--'));
+const PLANS = path.join(ROOT, 'test', 'fixed-plans.json');
 
 function startEngine() {
   const config = fs.readFileSync(path.join(os.homedir(), '.autopane', 'config.json'), 'utf8');
@@ -35,7 +42,8 @@ function runApp(task, startUrl, engineUrl) {
   const args = ['.', '--hidden', '--task', task, '--report', report];
   if (startUrl) args.push('--start-url', startUrl);
   return new Promise((resolve) => {
-    const child = spawn(ELECTRON, args, { cwd: APP, env: { ...process.env, AUTOPANE_ENGINE_URL: engineUrl }, stdio: 'inherit' });
+    const env = { ...process.env, AUTOPANE_ENGINE_URL: engineUrl, ...(fixed ? { AUTOPANE_FIXED_PLANS: PLANS } : {}) };
+    const child = spawn(ELECTRON, args, { cwd: APP, env, stdio: 'inherit' });
     child.on('exit', () => resolve(fs.existsSync(report) ? JSON.parse(fs.readFileSync(report, 'utf8')) : { ok: false, reason: 'no report' }));
   });
 }

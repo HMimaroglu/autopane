@@ -5,3 +5,4 @@ __pycache__/
 out/
 test-results/
 .DS_Store
+.ruff_cache/

@@ -2,7 +2,10 @@
 // literal text to type. It runs through the Claude Code CLI on the user's own
 // login (no API key), with tools, MCP servers, skills and settings all switched off.
 
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const SYSTEM = `You plan browser tasks for a fast executor that can only do these actions:
 - click: click one element (button, link, checkbox, radio, tab)
@@ -25,20 +28,39 @@ repeat values that were typed, since most sites do not echo them back.`;
 const REPLAN = `The executor is stuck. Given the task, the steps already done, and the current page,
 write the REMAINING steps from here. Same JSON shape; start_url is the current URL.`;
 
+// The prompt goes in on stdin and the system prompt in a file, so no multi-line
+// argument ever passes through cmd.exe (Windows) or a shell's quoting.
+const SYSTEM_FILE = path.join(os.tmpdir(), 'autopane-planner-system.txt');
+
+function claudeCommand() {
+  const configured = process.env.AUTOPANE_CLAUDE;
+  if (configured) return configured;
+  if (process.platform !== 'win32') return 'claude';
+  try {
+    // npm installs claude.cmd, the native installer claude.exe; prefer the .exe.
+    const found = execFileSync('where', ['claude'], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
+    return found.find((f) => f.toLowerCase().endsWith('.exe')) || found[0] || 'claude';
+  } catch {
+    return 'claude';
+  }
+}
+
 function runClaude(prompt, { model = 'sonnet', timeoutMs = 90000 } = {}) {
+  fs.writeFileSync(SYSTEM_FILE, SYSTEM);
+  const command = claudeCommand();
+  const args = ['-p', '--model', model, '--output-format', 'json', '--system-prompt-file', SYSTEM_FILE,
+    '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--disable-slash-commands', '--no-session-persistence'];
   return new Promise((resolve, reject) => {
-    const args = ['-p', prompt, '--model', model, '--output-format', 'json',
-      '--system-prompt', SYSTEM, '--tools', '', '--strict-mcp-config', '--setting-sources', '',
-      '--disable-slash-commands', '--no-session-persistence'];
-    const child = spawn(process.env.AUTOPANE_CLAUDE || 'claude', args, {
-      stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32',
+    const child = spawn(command, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(command),
     });
     let out = '';
     let err = '';
     const timer = setTimeout(() => child.kill(), timeoutMs);
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { err += d; });
-    child.on('error', reject);
+    child.on('error', (e) => reject(new Error(`could not start claude (${command}): ${e.message}`)));
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) return reject(new Error(`claude exited ${code}: ${err || out}`.slice(0, 500)));
@@ -48,6 +70,7 @@ function runClaude(prompt, { model = 'sonnet', timeoutMs = 90000 } = {}) {
         reject(new Error(`planner returned something unusable: ${e.message}`));
       }
     });
+    child.stdin.end(prompt);
   });
 }
 
@@ -61,12 +84,21 @@ function parsePlan(text) {
   return plan;
 }
 
+// Tests on machines without a Claude login (CI) supply plans keyed by task.
+function fixedPlan(task) {
+  const plans = JSON.parse(fs.readFileSync(process.env.AUTOPANE_FIXED_PLANS, 'utf8'));
+  if (!plans[task]) throw new Error(`no fixed plan for task: ${task}`);
+  return parsePlan(JSON.stringify(plans[task]));
+}
+
 function plan(task, startUrl) {
+  if (process.env.AUTOPANE_FIXED_PLANS) return Promise.resolve(fixedPlan(task));
   const hint = startUrl ? `\nStart at: ${startUrl}` : '';
   return runClaude(`Task: ${task}${hint}`);
 }
 
 function replan(task, done, snapshot) {
+  if (process.env.AUTOPANE_FIXED_PLANS) return Promise.reject(new Error('replanning needs Claude'));
   const page = snapshot.elements.slice(0, 80).map(describe).join('\n');
   return runClaude(`${REPLAN}\n\nTask: ${task}\nSteps done:\n${done.map((s) => `- ${s.action} ${s.target}`).join('\n') || '- none'}\n` +
     `Current URL: ${snapshot.url}\nPage: ${snapshot.title}\n${snapshot.context.join(' | ')}\nElements:\n${page}`);

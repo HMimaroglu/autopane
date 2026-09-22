@@ -148,11 +148,16 @@ class Page {
 
   async type(id, text, submit = false) {
     await this.click(id);
-    await this.eval(`(() => {
-      const el = document.querySelector('${sel(id)}');
+    // Some sites swap the field for a new one on focus (Wikipedia's search box does);
+    // then the focused element is where the keystrokes would go.
+    const found = await this.eval(`(() => {
+      const el = document.querySelector('${sel(id)}') || document.activeElement;
+      if (!el || el === document.body) return false;
       el.focus();
       if ('select' in el) el.select(); else document.execCommand('selectAll');
+      return true;
     })()`);
+    if (!found) throw new Error(`field ${id} is gone and nothing has focus`);
     await this.send('Input.insertText', { text });
     if (submit) await this.press('Enter');
     await this.settle();

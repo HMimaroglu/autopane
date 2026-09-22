@@ -5,13 +5,20 @@ without touching your mouse, keyboard or other windows. Claude writes the plan; 
 Jev-style decision model (SemIf on Qwen3.5-4B) makes every per-step decision in well
 under a second.
 
-```
-./run.sh          # macOS / Linux: sets everything up on first run, then opens the app
-.\run.ps1         # Windows
-```
+| | Run |
+|---|---|
+| **macOS / Linux** | `./run.sh` |
+| **Windows** | double-click `run.cmd` (or `.\run.cmd` in a terminal) |
 
-First run downloads the model once (~9 GB down, 4.5 GB kept on a Mac) and needs the
-`claude` CLI signed in. No API key is used; planning runs on your Claude Code login.
+That's it. The first run installs whatever is missing (uv, which brings its own Python;
+Node and git through Homebrew or winget), downloads the model once, and opens the app.
+Later runs just open it. Add `--setup-only` to install without opening.
+
+The one thing it can't do for you: the [`claude` CLI](https://claude.com/claude-code) must be
+installed and signed in, because Claude writes the plan for each task. No API key is used.
+
+The model runs where it's fastest on each machine: **MLX** on Apple Silicon (8-bit, 4.2 GB),
+**PyTorch/CUDA** on a PC with an NVIDIA GPU, and **llama.cpp on the CPU** everywhere else.
 
 ## How it works
 
@@ -33,7 +40,7 @@ First run downloads the model once (~9 GB down, 4.5 GB kept on a Mac) and needs 
 
 | | Mac (MLX, 8-bit) | CPU (llama.cpp, Q8_0), the Windows-without-NVIDIA path |
 |---|---|---|
-| Per decision, median | **0.54–0.85 s** | 2.3–2.8 s |
+| Per decision, median | **0.54–0.85 s** | 2.3–2.8 s (on the M4's CPU) |
 | Claude plan | 4.7–8.2 s | same |
 | Whole task (2–11 steps) | 7.5–20 s | 9.6–53 s |
 
@@ -45,8 +52,9 @@ why every decision is kept to ~250 tokens.
 
 ```
 cd app
-node --test test/*.test.js      # unit: candidate filtering, ranking, plan parsing
-node ../test/e2e.mjs            # end to end: real Claude, real model, app run hidden
+node --test test/agent.test.js          # unit: candidate filtering, ranking, plan parsing
+node ../test/e2e.mjs                    # end to end: real Claude, real model, app run hidden
+node ../test/e2e.mjs --fixed-plans      # same, with canned plans (no Claude login needed)
 ```
 
 The e2e suite runs four tasks with the window **hidden and unfocused**: newsletter signup,
@@ -54,14 +62,14 @@ a flight search and booking of the cheapest nonstop out of 24 results, sign in p
 change, and a live Wikipedia search. It passes on what the test site's server actually
 received (or the live URL reached), not on the agent's own success check.
 
-Results: 12/12 over three runs on MLX, 4/4 on the llama.cpp CPU engine.
+GitHub Actions runs the full setup and the e2e suite on a GPU-less **Windows** machine
+(llama.cpp engine) on every push, plus the unit tests on macOS.
 
 ## Platforms
 
-- **macOS, Apple Silicon:** tested end to end.
-- **CPU engine (llama.cpp):** tested end to end on the Mac CPU, same code Windows uses.
-- **Windows:** `run.ps1` and the CUDA/CPU engine paths are written but have **not been run
-  on a Windows machine yet**.
+- **macOS, Apple Silicon:** verified end to end (MLX engine and llama.cpp CPU engine).
+- **Windows:** setup and e2e run in CI on the CPU engine. The NVIDIA/CUDA path is written
+  but has no GPU machine testing it.
 - **Desktop apps (outside the browser):** not built. On macOS there is no supported way to
   give an agent its own invisible desktop without a VM.
 
