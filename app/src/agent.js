@@ -84,7 +84,10 @@ class Agent {
   // Returns { el, confidence, ms, candidates } or null when nothing fits.
   async ground(step, snapshot) {
     const pool = snapshot.elements.filter(kindFilter(step.action));
-    if (pool.length === 0) return null;
+    if (pool.length === 0) {
+      this.emit('trace', { text: `no element of the kind "${step.action}" needs on this page` });
+      return null;
+    }
     const candidates = rank(step, pool);
     this.emit('trace', { text: `${pool.length} fields/elements fit, ${candidates.length} kept` });
     // Skip the model only when the sole candidate's own label matches the step.

@@ -15,7 +15,9 @@ const { Agent } = require('./agent');
 
 const PANEL_WIDTH = 400;
 const BAR_HEIGHT = 44;
-const AGENT_ZOOM = 0.8;
+// Sites lay out for at least this many CSS pixels, whatever the window size, so a
+// small window or screen never collapses search boxes and menus into icons.
+const LAYOUT_WIDTH = 1300;
 const ROOT = path.resolve(__dirname, '..', '..');
 
 const arg = (name) => {
@@ -63,9 +65,14 @@ function startEngine() {
   });
 }
 
+function agentZoom() {
+  return Math.min(1, Math.max(1, view.getBounds().width) / LAYOUT_WIDTH);
+}
+
 function layout() {
   const [w, h] = win.getContentSize();
   view.setBounds({ x: PANEL_WIDTH, y: BAR_HEIGHT, width: Math.max(0, w - PANEL_WIDTH), height: Math.max(0, h - BAR_HEIGHT) });
+  if (view.webContents.getURL()) view.webContents.setZoomFactor(agentZoom());
 }
 
 let onDone = () => {};
@@ -112,9 +119,7 @@ async function createWindow() {
   win.contentView.addChildView(view);
   layout();
   win.on('resize', layout);
-  // Render at 80% so sites lay out for a ~1300 px desktop instead of collapsing
-  // their search boxes and menus at the view's real 1040 px width.
-  view.webContents.on('did-finish-load', () => view.webContents.setZoomFactor(AGENT_ZOOM));
+  view.webContents.on('did-finish-load', () => view.webContents.setZoomFactor(agentZoom()));
   view.webContents.on('did-navigate', (_e, url) => send('url', url));
   view.webContents.on('did-navigate-in-page', (_e, url) => send('url', url));
   view.webContents.setWindowOpenHandler(({ url }) => {
