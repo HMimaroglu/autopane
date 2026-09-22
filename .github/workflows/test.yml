@@ -12,6 +12,13 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Cache the model download
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.autopane
+          key: model-${{ runner.os }}-${{ hashFiles('engine/prepare_model.py') }}
       - name: Setup through run.cmd
         shell: cmd
         run: run.cmd --setup-only
@@ -21,6 +28,7 @@ jobs:
       - name: End to end (real model and app, fixed plans)
         env:
           AUTOPANE_CASE_TIMEOUT_MS: 300000
+          AUTOPANE_TRACE_HANG: 120
         run: node test/e2e.mjs --fixed-plans
 
   macos:

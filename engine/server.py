@@ -12,6 +12,7 @@ the model is loaded and warm.
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import json
 import os
 import sys
@@ -22,8 +23,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MAX_TOKENS = 6144
 
 
+def log(message: str) -> None:
+    print(f"[engine] {message}", file=sys.stderr, flush=True)
+
+
 def load(config: dict):
     backend = config["backend"]
+    log(f"loading {backend} model")
     if backend == "mlx":
         from semif_phase1 import mlx_backend as impl
 
@@ -126,14 +132,19 @@ def main():
     parser.add_argument("--exit-with-stdin", action="store_true",
                         help="Exit when stdin closes, so the model never outlives the app that started it")
     args = parser.parse_args()
+    if os.environ.get("AUTOPANE_TRACE_HANG"):
+        # Diagnostics: print every thread's stack periodically if startup stalls.
+        faulthandler.dump_traceback_later(int(os.environ["AUTOPANE_TRACE_HANG"]), repeat=True)
     if args.exit_with_stdin:
         # The parent holds our stdin open; EOF means it quit or crashed.
         threading.Thread(target=lambda: (sys.stdin.read(), os._exit(0)), daemon=True).start()
     engine = Engine(json.loads(args.config))
+    log("model loaded, warming up")
     # First forward compiles kernels; do it before announcing readiness.
     engine.decide("warmup", [{"id": "w", "question": "Ready?",
                              "options": [{"id": "yes", "description": "Yes."},
                                          {"id": "no", "description": "No."}]}])
+    faulthandler.cancel_dump_traceback_later()
     server = serve(engine, args.port)
     print(f"READY {server.server_address[1]}", flush=True)
     try:
