@@ -4,7 +4,8 @@
 
 const SNAPSHOT_JS = `(() => {
   const SELECTOR = 'a[href],button,input,select,textarea,summary,[role=button],[role=link],' +
-    '[role=checkbox],[role=radio],[role=tab],[role=menuitem],[role=option],[role=combobox],' +
+    '[role=checkbox],[role=radio],[role=tab],[role=menuitem],[role=menuitemradio],' +
+    '[role=menuitemcheckbox],[role=treeitem],[role=option],[role=combobox],' +
     '[role=textbox],[role=switch],[contenteditable=""],[contenteditable=true],[onclick]';
   const clean = (s, n = 80) => (s || '').replace(/\\s+/g, ' ').trim().slice(0, n);
   // First non-empty source wins; hidden <label>s and empty innerText fall through.
@@ -81,6 +82,24 @@ class Page {
     this.wc = webContents;
     this.cdp = webContents.debugger;
     if (!this.cdp.isAttached()) this.cdp.attach('1.3');
+    // In-flight page requests, so settle() can wait out a client-side navigation:
+    // sites like GitHub fetch the next page with the DOM untouched until it arrives.
+    this.inflight = new Map();
+    this.cdp.on('message', (_event, method, params) => {
+      if (method === 'Network.requestWillBeSent' && NAV_TYPES.has(params.type)) {
+        this.inflight.set(params.requestId, Date.now());
+      } else if (method === 'Network.loadingFinished' || method === 'Network.loadingFailed') {
+        this.inflight.delete(params.requestId);
+      }
+    });
+    this.send('Network.enable').catch(() => {});
+  }
+
+  // Requests still open, not counting old ones (long polls, streams) that never end.
+  pending() {
+    const cutoff = Date.now() - STALE_REQUEST_MS;
+    for (const [id, started] of this.inflight) if (started < cutoff) this.inflight.delete(id);
+    return this.inflight.size;
   }
 
   send(method, params = {}) {
@@ -112,12 +131,18 @@ class Page {
   async settle() {
     // Navigation replaces the document mid-wait; retry once on the new one.
     for (let i = 0; i < 20 && this.wc.isLoading(); i++) await sleep(100);
-    try {
-      await this.eval(SETTLE_JS);
-    } catch {
-      await sleep(300);
-      await this.eval(SETTLE_JS).catch(() => {});
-    }
+    // Quiet means no DOM changes AND no page requests open; a fetch that lands after
+    // the DOM went quiet starts the wait over, up to SETTLE_CAP_MS in all.
+    const deadline = Date.now() + SETTLE_CAP_MS;
+    do {
+      while (this.pending() && Date.now() < deadline) await sleep(50);
+      try {
+        await this.eval(SETTLE_JS);
+      } catch {
+        await sleep(300);
+        await this.eval(SETTLE_JS).catch(() => {});
+      }
+    } while (this.pending() && Date.now() < deadline);
   }
 
   async snapshot() {
@@ -129,7 +154,9 @@ class Page {
     const box = await this.eval(`(() => {
       const el = document.querySelector('${sel(id)}');
       if (!el) return null;
-      el.scrollIntoView({ block: 'center', inline: 'center' });
+      // 'instant' overrides a site's CSS smooth scrolling, which would leave the box read
+      // below as it was before the scroll and send the click off screen.
+      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
       const r = el.getBoundingClientRect();
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     })()`);
@@ -143,6 +170,7 @@ class Page {
   async wake() {
     await this.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await this.send('Page.setWebLifecycleState', { state: 'active' }).catch(() => {});
+    await this.send('Network.enable').catch(() => {});
   }
 
   async click(id) {
@@ -195,6 +223,10 @@ class Page {
     await sleep(250);
   }
 }
+
+const NAV_TYPES = new Set(['Document', 'XHR', 'Fetch']);
+const STALE_REQUEST_MS = 8000;
+const SETTLE_CAP_MS = 8000;
 
 const sel = (id) => `[data-ap-id="${String(id).replace(/\D/g, '')}"]`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -37,9 +37,11 @@ function claudeCommand() {
   if (configured) return configured;
   if (process.platform !== 'win32') return 'claude';
   try {
-    // npm installs claude.cmd, the native installer claude.exe; prefer the .exe.
+    // npm installs claude.cmd (beside an extensionless sh shim Windows cannot run),
+    // the native installer claude.exe; prefer the .exe, then the .cmd.
     const found = execFileSync('where', ['claude'], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
-    return found.find((f) => f.toLowerCase().endsWith('.exe')) || found[0] || 'claude';
+    const withExt = (ext) => found.find((f) => f.toLowerCase().endsWith(ext));
+    return withExt('.exe') || withExt('.cmd') || withExt('.bat') || 'claude';
   } catch {
     return 'claude';
   }
@@ -51,10 +53,12 @@ function runClaude(prompt, { model = 'sonnet', timeoutMs = 90000 } = {}) {
   const args = ['-p', '--model', model, '--output-format', 'json', '--system-prompt-file', SYSTEM_FILE,
     '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--disable-slash-commands', '--no-session-persistence'];
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(command),
-    });
+    // A .cmd needs cmd.exe, which joins arguments unquoted: quote each one so the
+    // empty --tools value and paths with spaces survive.
+    const viaShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
+    const child = viaShell
+      ? spawn([command, ...args].map((a) => `"${a}"`).join(' '), { stdio: ['pipe', 'pipe', 'pipe'], shell: true })
+      : spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
     const timer = setTimeout(() => child.kill(), timeoutMs);

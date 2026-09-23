@@ -141,7 +141,8 @@ class Agent {
     report.planMs = Date.now() - t;
     report.plan = current;
     this.emit('plan', { lines: current.steps.map(stepLine), ms: report.planMs });
-    await this.page.goto(current.start_url);
+    // A start URL the user gave is used as given; Claude sometimes rewrites http as https.
+    await this.page.goto(startUrl || current.start_url);
     return this.execute(task, current, [], report, started);
   }
 
